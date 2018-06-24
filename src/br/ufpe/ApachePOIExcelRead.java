@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -22,24 +23,26 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
+import br.ufpe.utils.StringUtils;
+
 public class ApachePOIExcelRead {
 
 	private static final String XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 	private static final String CSV_CONTENT_TYPE = "application/vnd.ms-excel";
 	private static final String TEMP_FILE_TYPE = "~$";
 
-	private static final String CSV_NAME = "H1NM.csv";
-
 	private static final String S11_SHEET_NAME = "|S11|";
 	private static final String FASE_S11_SHEET_NAME = "FASE S11";
 
 	private static final String CHAAF_PASTE = "/CHAAF";
+	private static final String FASE_SHEET_NAME = "FASE";
 
 	public static void main(String[] args) {
 		System.out.println("Por favor, aguarde ...");
 
 		Map<ExportImportFile, List<ExportImportFile>> map = createXlsxToCSVListMap();
-
+		List<ExportImportFile> csvFiles = null;
+		FileOutputStream outputStream = null;
 		for (Entry<ExportImportFile, List<ExportImportFile>> entry : map
 				.entrySet()) {
 			try {
@@ -49,11 +52,60 @@ public class ApachePOIExcelRead {
 
 				eraseMeansColumnValues(workbook);
 
-				FileOutputStream outputStream = new FileOutputStream(entry
-						.getKey().getPath());
+				outputStream = new FileOutputStream(entry.getKey().getPath());
 				workbook.write(outputStream);
-				excelFile.close();
 				outputStream.close();
+				excelFile.close();
+
+				csvFiles = entry.getValue();
+
+				Collections.sort(csvFiles);
+
+				XSSFSheet datatypeSheet = workbook.getSheet(S11_SHEET_NAME);
+				if (datatypeSheet != null) {
+					Row currentRow = datatypeSheet.getRow(0);
+
+					excelFile.close();
+
+					for (ExportImportFile csvFile : csvFiles) {
+
+						excelFile = new FileInputStream(new File(entry.getKey()
+								.getPath()));
+						workbook = new XSSFWorkbook(excelFile);
+						datatypeSheet = workbook.getSheet(S11_SHEET_NAME);
+						currentRow = datatypeSheet.getRow(0);
+
+						Cell lastHeaderCell = currentRow.getCell(currentRow
+								.getLastCellNum() - 1);
+						String lastHeader = lastHeaderCell.getStringCellValue();
+
+						String newHeader = getNewHeader(lastHeader);
+						String csvHeader = StringUtils.difference(entry
+								.getKey().getName(), csvFile.getName());
+
+						if (!newHeader.equals(csvHeader)) {
+							System.out
+									.println("Nao foi possivel importar o arquivo "
+											+ csvFile.getName()
+											+ ": A coluna "
+											+ csvHeader
+											+ " nao e a ultima da planilha S11");
+						} else {
+
+							List<List<Double>> doubles = createDoubleList(csvFile
+									.getPath());
+							putS11Xlsx(doubles.get(0), workbook);
+							putFaseS11Xlsx(doubles.get(1), workbook);
+
+						}
+
+						outputStream = new FileOutputStream(entry.getKey()
+								.getPath());
+						workbook.write(outputStream);
+						outputStream.close();
+						excelFile.close();
+					}
+				}
 			} catch (FileNotFoundException e) {
 				e.printStackTrace();
 			} catch (IOException e) {
@@ -61,7 +113,7 @@ public class ApachePOIExcelRead {
 			}
 		}
 
-		System.out.println("Processo executado com sucesso!");
+		System.out.println("Processo terminado.");
 	}
 
 	private static Map<ExportImportFile, List<ExportImportFile>> createXlsxToCSVListMap() {
@@ -106,14 +158,14 @@ public class ApachePOIExcelRead {
 				csvFile.setName(csvName);
 				csvFile.setPath(csv_files.get(j));
 				if (xlsStringArray.length == 1
-						&& csvName.matches("(" + xlsStringArray[0] + ").+")) {
+						&& csvName.matches("(" + xlsStringArray[0] + ")[A-Z]+")) {
 					xlsxFile = new ExportImportFile();
 					xlsxFile.setName(xlsStringArray[0]);
 					csvList = map.get(xlsxFile);
 					csvList.add(csvFile);
 				} else if (xlsStringArray.length == 2
-						&& csvName.matches("(" + xlsStringArray[0] + ").+[-"
-								+ xlsStringArray[1] + "]{1}")) {
+						&& csvName.matches("(" + xlsStringArray[0]
+								+ ")[A-Z]+[-" + xlsStringArray[1] + "]+")) {
 					xlsxFile = new ExportImportFile();
 					xlsxFile.setName(xlsStringArray[0] + "-"
 							+ xlsStringArray[1]);
@@ -207,8 +259,8 @@ public class ApachePOIExcelRead {
 		List<Integer> columnsToErase = new ArrayList<Integer>();
 		Row currentRow = null;
 		Cell cell = null;
-		for (int i = 0; i < datatypeSheet.getLastRowNum(); i++) {
-			currentRow = datatypeSheet.getRow(i);
+		if (datatypeSheet != null) {
+			currentRow = datatypeSheet.getRow(0);
 			if (currentRow != null) {
 				Iterator<Cell> cells = currentRow.cellIterator();
 				while (cells.hasNext()) {
@@ -221,71 +273,32 @@ public class ApachePOIExcelRead {
 					}
 				}
 			}
-		}
-		for (Integer columnIndex : columnsToErase) {
-			for (int i = 0; i < datatypeSheet.getLastRowNum(); i++) {
-				currentRow = datatypeSheet.getRow(i);
-				if (currentRow != null) {
-					cell = currentRow.getCell(columnIndex);
-					if (cell != null) {
-						currentRow.removeCell(cell);
+			for (Integer columnIndex : columnsToErase) {
+				for (int i = 0; i < datatypeSheet.getLastRowNum() + 1; i++) {
+					currentRow = datatypeSheet.getRow(i);
+					if (currentRow != null) {
+						cell = currentRow.getCell(columnIndex);
+						if (cell != null) {
+							currentRow.removeCell(cell);
+						}
 					}
 				}
 			}
 		}
-
-	}
-
-	private static void pasteMeansColulumnsValues(List<List<Cell>> list,
-			XSSFWorkbook workbook) {
-		XSSFSheet datatypeSheet = workbook.getSheet(S11_SHEET_NAME);
-		Row row = null;
-		Cell oldCell = null;
-		Cell newCell = null;
-		for (List<Cell> cells : list) {
-			for (int i = 0; i < datatypeSheet.getLastRowNum(); i++) {
-				row = datatypeSheet.getRow(i);
-				if (row.getLastCellNum() > 0) {
-					newCell = row.createCell(row.getLastCellNum());
-					oldCell = cells.get(i);
-					if (oldCell.getCellType() == Cell.CELL_TYPE_STRING) {
-						newCell.setCellValue(oldCell.getStringCellValue());
-					} else if (oldCell.getCellType() == Cell.CELL_TYPE_FORMULA) {
-						newCell.setCellFormula(oldCell.getCellFormula());
-					}
-				}
-			}
-		}
-
-	}
-
-	private static List<List<Cell>> copyMeansColumnsValues(XSSFWorkbook workbook) {
-		XSSFSheet datatypeSheet = workbook.getSheet(S11_SHEET_NAME);
-		List<Cell> cells = null;
-		Cell cell = null;
-		List<List<Cell>> list = new ArrayList<List<Cell>>();
-		for (int k = 3; k >= 1; k--) {
-			cells = new ArrayList<Cell>();
-			for (int i = 0; i < datatypeSheet.getLastRowNum(); i++) {
-				Row currentRow = datatypeSheet.getRow(i);
-				cell = currentRow.getCell(currentRow.getLastCellNum() - k);
-				cells.add(cell);
-			}
-			list.add(cells);
-		}
-		return list;
 	}
 
 	private static void putFaseS11Xlsx(List<Double> list, XSSFWorkbook workbook) {
 		XSSFSheet datatypeSheet = workbook.getSheet(FASE_S11_SHEET_NAME);
+		if (datatypeSheet == null) {
+			datatypeSheet = workbook.getSheet(FASE_SHEET_NAME);
+		}
 		Row currentRow = datatypeSheet.getRow(0);
 		Cell newCell = null;
 		for (int i = 0; i < list.size(); i++) {
 			currentRow = datatypeSheet.getRow(i);
-			if (currentRow != null) {
-				newCell = currentRow.createCell(currentRow.getLastCellNum());
-				newCell.setCellValue(list.get(i));
-			}
+			newCell = currentRow.createCell(currentRow.getLastCellNum());
+			newCell.setCellType(Cell.CELL_TYPE_NUMERIC);
+			newCell.setCellValue(list.get(i));
 		}
 	}
 
@@ -298,17 +311,19 @@ public class ApachePOIExcelRead {
 		String newHeader = getNewHeader(lastHeader);
 		Cell newCell = currentRow.createCell(currentRow.getLastCellNum());
 		newCell.setCellValue(newHeader);
+		newCell.setCellType(Cell.CELL_TYPE_STRING);
 		for (int i = 0; i < list.size(); i++) {
 			currentRow = datatypeSheet.getRow(i + 1);
 			if (currentRow != null) {
 				newCell = currentRow.createCell(currentRow.getLastCellNum());
+				newCell.setCellType(Cell.CELL_TYPE_NUMERIC);
 				newCell.setCellValue(list.get(i));
 			}
 		}
 
 	}
 
-	private static List<List<Double>> createDoubleList() {
+	private static List<List<Double>> createDoubleList(String csvPath) {
 		List<List<Double>> doubles = new ArrayList<List<Double>>();
 		BufferedReader br = null;
 		String line = "";
@@ -316,7 +331,7 @@ public class ApachePOIExcelRead {
 		List<Double> doubles2 = null;
 		try {
 
-			br = new BufferedReader(new FileReader(CSV_NAME));
+			br = new BufferedReader(new FileReader(csvPath));
 			while ((line = br.readLine()) != null) {
 
 				if (line.contains("BEGIN")) {
@@ -363,7 +378,10 @@ public class ApachePOIExcelRead {
 			for (int i = 0; i < lastHeader.length() + 1; i++) {
 				newHeader += 'A';
 			}
+		} else if ("Freq, (MHz)".equals(lastHeader)) {
+			newHeader = "A";
 		} else {
+
 			int posZ = lastHeader.lastIndexOf('Z');
 			if (posZ > 0) {
 				char c = (char) (lastHeader.charAt(posZ - 1) + 1);
@@ -379,7 +397,7 @@ public class ApachePOIExcelRead {
 	}
 }
 
-class ExportImportFile {
+class ExportImportFile implements Comparable<ExportImportFile> {
 
 	private String name;
 	private String path;
@@ -423,6 +441,26 @@ class ExportImportFile {
 		} else if (!name.equals(other.name))
 			return false;
 		return true;
+	}
+
+	@Override
+	public int compareTo(ExportImportFile other) {
+		if (other == null)
+			return -1;
+		if (name == null) {
+			if (other.name != null)
+				return 1;
+		} else if (other.name == null)
+			return -1;
+		else if (name.length() < other.name.length())
+			return -1;
+		else if (name.length() > other.name.length())
+			return 1;
+		else if (name.compareTo(other.name) <= 0)
+			return -1;
+		else
+			return 1;
+		return 0;
 	}
 
 }
