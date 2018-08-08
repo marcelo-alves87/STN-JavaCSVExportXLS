@@ -95,7 +95,7 @@ public class ApachePOIExcelRead {
 							List<List<Double>> doubles = createDoubleList(csvFile
 									.getPath());
 							putS11Xlsx(doubles.get(0), workbook);
-							putFaseS11Xlsx(doubles.get(1), workbook);
+						//	putFaseS11Xlsx(doubles.get(1), workbook);
 
 						}
 
@@ -334,14 +334,14 @@ public class ApachePOIExcelRead {
 			br = new BufferedReader(new FileReader(csvPath));
 			while ((line = br.readLine()) != null) {
 
-				if (line.contains("BEGIN")) {
+				if (line.contains("BEGIN") || line.contains("Freq [GHz]")) {
 					doubles2 = new ArrayList<Double>();
 					doubles.add(doubles2);
 				}
 				// use comma as separator
 				String[] country = line.split(cvsSplitBy);
 				if (country.length > 1 && !line.contains("!")
-						&& !line.contains("END")) {
+						&& !line.contains("END") && !line.contains("Freq")) {
 					doubles2.add(Double.parseDouble(country[1]));
 				}
 			}
